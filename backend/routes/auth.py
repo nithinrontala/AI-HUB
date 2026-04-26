@@ -27,13 +27,12 @@ async def signup(user: UserCreate):
     new_user = UserInDB(**user.model_dump(exclude={"password"}), hashed_password=hashed_password)
     
     # Insert saving datetime dynamically
-    result = await db.users.insert_one(new_user.model_dump())
+    user_dict = new_user.model_dump()
+    result = await db.users.insert_one(user_dict)
     
     return UserResponse(
         id=str(result.inserted_id),
-        name=user.name,
-        email=user.email,
-        created_at=new_user.created_at
+        **user_dict
     )
 
 @router.post("/login")

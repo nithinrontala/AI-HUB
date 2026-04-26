@@ -1,17 +1,57 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, ArrowRight, BrainCircuit } from 'lucide-react';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 
 export default function Signup() {
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: ''
+  });
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
-  const handleSubmit = (e) => {
+  useEffect(() => {
+    if (localStorage.getItem('token')) {
+      navigate('/');
+    }
+  }, [navigate]);
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate auth registration
-    setTimeout(() => setIsLoading(false), 1500);
+    setError('');
+    
+    try {
+      const response = await fetch('http://localhost:8000/auth/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Signup failed');
+      }
+
+      setSuccess(true);
+      // Redirect or show success message
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -36,35 +76,57 @@ export default function Signup() {
 
         <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
           <div className="glass-panel py-8 px-4 sm:rounded-2xl sm:px-10">
+            {error && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm animate-shake">
+                {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-xl text-green-400 text-sm animate-slide-up">
+                Account created successfully! You can now{' '}
+                <Link to="/login" className="font-bold underline">log in</Link>.
+              </div>
+            )}
+
             <form className="space-y-5" onSubmit={handleSubmit}>
               
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Full Name</label>
                 <Input 
+                  name="name"
                   type="text" 
                   placeholder="John Doe" 
                   icon={User} 
                   required 
+                  value={formData.name}
+                  onChange={handleChange}
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Email address</label>
                 <Input 
+                  name="email"
                   type="email" 
                   placeholder="you@example.com" 
                   icon={Mail} 
                   required 
+                  value={formData.email}
+                  onChange={handleChange}
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Password</label>
                 <Input 
+                  name="password"
                   type="password" 
                   placeholder="Create a strong password" 
                   icon={Lock} 
                   required 
+                  value={formData.password}
+                  onChange={handleChange}
                 />
               </div>
 

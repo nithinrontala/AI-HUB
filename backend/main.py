@@ -2,7 +2,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
-from core.database import connect_to_mongo, close_mongo_connection
+from core.database import connect_to_mongo, close_mongo_connection, init_db
 import contextlib
 
 logging.basicConfig(level=logging.INFO)
@@ -11,6 +11,7 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI):
     # Startup
     await connect_to_mongo()
+    await init_db()
     yield
     # Shutdown
     await close_mongo_connection()
