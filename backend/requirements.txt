@@ -7,3 +7,4 @@ python-dotenv
 pytest
 passlib[bcrypt]
 python-jose[cryptography]
+faker
