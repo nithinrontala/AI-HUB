@@ -17,6 +17,7 @@ async def lifespan(app: FastAPI):
     await close_mongo_connection()
 
 from routes.auth import router as auth_router
+from routes.courses import router as courses_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -38,6 +39,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(courses_router)
 
 @app.get("/")
 async def root():

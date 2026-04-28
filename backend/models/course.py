@@ -27,6 +27,7 @@ class CourseCreate(CourseBase):
 class CourseInDB(CourseBase):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+    embedding: Optional[List[float]] = None
 
 class CourseResponse(CourseInDB):
     id: str
