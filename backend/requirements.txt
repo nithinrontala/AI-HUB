@@ -8,3 +8,5 @@ pytest
 passlib[bcrypt]
 python-jose[cryptography]
 faker
+sentence-transformers
+numpy
