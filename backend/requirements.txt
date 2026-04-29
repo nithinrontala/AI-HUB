@@ -10,3 +10,6 @@ python-jose[cryptography]
 faker
 sentence-transformers
 numpy
+pandas
+scikit-learn
+scipy

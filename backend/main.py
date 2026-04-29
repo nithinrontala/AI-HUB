@@ -18,6 +18,7 @@ async def lifespan(app: FastAPI):
 
 from routes.auth import router as auth_router
 from routes.courses import router as courses_router
+from routes.recommendations import router as recommendations_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -40,6 +41,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(courses_router)
+app.include_router(recommendations_router)
 
 @app.get("/")
 async def root():
