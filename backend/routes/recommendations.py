@@ -23,29 +23,36 @@ async def get_personalized_recommendations(current_user: dict = Depends(get_curr
         interactions.append(doc)
     
     if not interactions:
+        # If no interactions, maybe return popular courses or nothing
         return []
     
-    # 2. Build interaction matrix
-    interaction_matrix = recommender_service.build_interaction_matrix(interactions)
+    # 2. Fetch all courses (needed for content-based scoring)
+    course_cursor = db["courses"].find()
+    all_courses = []
+    async for doc in course_cursor:
+        all_courses.append(doc)
     
-    # 3. Generate CF recommendations
-    recommended_ids = recommender_service.get_collaborative_recommendations(
-        str(user_id), interaction_matrix, limit=limit
+    # 3. Generate hybrid recommendations
+    # We can tune weights here, e.g., 0.4 for CF and 0.6 for CB
+    recommended_tuples = recommender_service.get_hybrid_recommendations(
+        str(user_id), interactions, all_courses, cf_weight=0.4, cb_weight=0.6, limit=limit
     )
     
-    if not recommended_ids:
-        # Fallback to some popular courses or empty list
+    if not recommended_tuples:
         return []
     
-    # 4. Fetch course details for recommended IDs
+    # 4. Fetch course details for recommended IDs and maintain order
+    recommended_ids = [t[0] for t in recommended_tuples]
     recommended_courses = []
+    
+    # Create a map for quick lookup
+    course_map = {str(c["_id"]): c for c in all_courses}
+    
     for course_id in recommended_ids:
-        # Check if course_id is ObjectId or string
-        query = {"_id": course_id}
-        course_doc = await db["courses"].find_one(query)
-        
+        course_doc = course_map.get(course_id)
         if course_doc:
             course_doc["id"] = str(course_doc["_id"])
             recommended_courses.append(course_doc)
             
     return recommended_courses
+
