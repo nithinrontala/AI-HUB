@@ -81,6 +81,62 @@ async def get_recommendations(course_id: str, limit: int = 5):
     
     return recommendations[:limit]
 
+@router.put("/{course_id}", response_model=CourseResponse)
+async def update_course(course_id: str, course_update: CourseCreate):
+    db = get_database()
+    if not ObjectId.is_valid(course_id):
+        raise HTTPException(status_code=400, detail="Invalid course ID")
+        
+    existing_course = await db["courses"].find_one({"_id": ObjectId(course_id)})
+    if not existing_course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    # Regenerate embedding if title or description changed
+    course_dict = course_update.model_dump()
+    if (course_dict.get("title") != existing_course.get("title") or 
+        course_dict.get("description") != existing_course.get("description")):
+        course_text = recommender_service.prepare_course_text(course_dict)
+        course_dict["embedding"] = recommender_service.generate_embedding(course_text)
+    
+    course_dict["updated_at"] = datetime.utcnow()
+    
+    await db["courses"].update_one(
+        {"_id": ObjectId(course_id)},
+        {"$set": course_dict}
+    )
+    
+    updated_doc = await db["courses"].find_one({"_id": ObjectId(course_id)})
+    updated_doc["id"] = str(updated_doc["_id"])
+    return updated_doc
+
+@router.delete("/{course_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_course(course_id: str):
+    db = get_database()
+    if not ObjectId.is_valid(course_id):
+        raise HTTPException(status_code=400, detail="Invalid course ID")
+        
+    result = await db["courses"].delete_one({"_id": ObjectId(course_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return None
+
+@router.get("/search/", response_model=List[CourseResponse])
+async def search_courses(q: str):
+    db = get_database()
+    # Basic text search using regex (case-insensitive)
+    cursor = db["courses"].find({
+        "$or": [
+            {"title": {"$regex": q, "$options": "i"}},
+            {"description": {"$regex": q, "$options": "i"}},
+            {"tags": {"$regex": q, "$options": "i"}}
+        ]
+    })
+    courses = []
+    async for doc in cursor:
+        doc["id"] = str(doc["_id"])
+        courses.append(doc)
+    return courses
+
 @router.post("/refresh-embeddings")
 async def refresh_all_embeddings():
     """Admin utility to regenerate embeddings for all existing courses."""
