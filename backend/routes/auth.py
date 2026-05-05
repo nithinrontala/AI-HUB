@@ -57,3 +57,10 @@ async def login(credentials: LoginRequest):
     # Generate JWT Context
     access_token = create_access_token(data={"sub": user["email"]})
     return {"access_token": access_token, "token_type": "bearer"}
+
+from core.auth import get_current_user
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(current_user: dict = Depends(get_current_user)):
+    current_user["id"] = str(current_user["_id"])
+    return current_user
