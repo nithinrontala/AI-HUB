@@ -9,7 +9,11 @@ from bson import ObjectId
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
 @router.get("/personalized", response_model=List[CourseResponse])
-async def get_personalized_recommendations(current_user: dict = Depends(get_current_user), limit: int = 5):
+async def get_personalized_recommendations(
+    rec_type: str = "hybrid", 
+    current_user: dict = Depends(get_current_user), 
+    limit: int = 6
+):
     db = get_database()
     
     user_id = current_user.get("_id")
@@ -22,36 +26,51 @@ async def get_personalized_recommendations(current_user: dict = Depends(get_curr
     async for doc in cursor:
         interactions.append(doc)
     
-    if not interactions:
-        # If no interactions, maybe return popular courses or nothing
-        return []
-    
-    # 2. Fetch all courses (needed for content-based scoring)
+    # 2. Fetch all courses
     course_cursor = db["courses"].find()
     all_courses = []
     async for doc in course_cursor:
         all_courses.append(doc)
     
-    # 3. Generate hybrid recommendations
-    # We can tune weights here, e.g., 0.4 for CF and 0.6 for CB
-    recommended_tuples = recommender_service.get_hybrid_recommendations(
-        str(user_id), interactions, all_courses, cf_weight=0.4, cb_weight=0.6, limit=limit
-    )
-    
-    if not recommended_tuples:
+    if not all_courses:
         return []
+
+    # 3. Generate recommendations based on type
+    interaction_matrix = recommender_service.build_interaction_matrix(interactions)
     
-    # 4. Fetch course details for recommended IDs and maintain order
-    recommended_ids = [t[0] for t in recommended_tuples]
+    recommended_scores = {} # {course_id: score}
+    
+    if rec_type == "content":
+        recommended_scores = recommender_service.get_content_based_recommendations(
+            str(user_id), interaction_matrix, all_courses
+        )
+    elif rec_type == "collaborative":
+        recommended_scores = recommender_service.get_collaborative_recommendations(
+            str(user_id), interaction_matrix
+        )
+    else: # Default to hybrid
+        hybrid_tuples = recommender_service.get_hybrid_recommendations(
+            str(user_id), interactions, all_courses, limit=limit
+        )
+        recommended_scores = {t[0]: t[1] for t in hybrid_tuples}
+
+    if not recommended_scores:
+        # Fallback: Popular courses if no interactions
+        interaction_counts = interaction_matrix.sum(axis=0).sort_values(ascending=False)
+        recommended_scores = {str(cid): float(score) for cid, score in interaction_counts.head(limit).items()}
+
+    # 4. Sort and limit
+    sorted_ids = sorted(recommended_scores.items(), key=lambda x: x[1], reverse=True)[:limit]
+    
+    # 5. Fetch course details and attach scores
+    course_map = {str(c["_id"]): c for c in all_courses}
     recommended_courses = []
     
-    # Create a map for quick lookup
-    course_map = {str(c["_id"]): c for c in all_courses}
-    
-    for course_id in recommended_ids:
+    for course_id, score in sorted_ids:
         course_doc = course_map.get(course_id)
         if course_doc:
             course_doc["id"] = str(course_doc["_id"])
+            course_doc["score"] = score
             recommended_courses.append(course_doc)
             
     return recommended_courses
