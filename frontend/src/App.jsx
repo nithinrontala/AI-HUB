@@ -11,11 +11,21 @@ import Progress from './pages/Progress';
 import Feedback from './pages/Feedback';
 import Layout from './components/Layout';
 
+import { useAuth } from './context/AuthContext';
+
 // Robust ProtectedRoute
 const ProtectedRoute = ({ children, requireOnboarded = true, showLayout = true }) => {
-  const token = localStorage.getItem('token');
+  const { token, user, loading } = useAuth();
   const onboarded = localStorage.getItem('onboarded') === 'true';
   const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      </div>
+    );
+  }
 
   if (!token) {
     return <Navigate to="/login" replace />;
@@ -34,6 +44,16 @@ const ProtectedRoute = ({ children, requireOnboarded = true, showLayout = true }
 };
 
 function App() {
+  const { loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      </div>
+    );
+  }
+
   return (
     <Router>
       <Routes>

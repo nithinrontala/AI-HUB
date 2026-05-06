@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel
 from models.user import UserCreate, UserResponse, UserInDB
 from core.security import get_password_hash, verify_password, create_access_token
@@ -64,3 +64,18 @@ from core.auth import get_current_user
 async def get_me(current_user: dict = Depends(get_current_user)):
     current_user["id"] = str(current_user["_id"])
     return current_user
+
+@router.put("/me", response_model=UserResponse)
+async def update_me(update_data: dict, current_user: dict = Depends(get_current_user)):
+    db = get_database()
+    
+    # Update user in DB
+    await db.users.update_one(
+        {"_id": current_user["_id"]},
+        {"$set": update_data}
+    )
+    
+    # Get updated user
+    updated_user = await db.users.find_one({"_id": current_user["_id"]})
+    updated_user["id"] = str(updated_user["_id"])
+    return updated_user

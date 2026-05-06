@@ -1,15 +1,17 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
-import { BrainCircuit, LogOut, BookOpen, User as UserIcon, Settings } from 'lucide-react';
+import { BrainCircuit, LogOut, BookOpen, User as UserIcon, Settings, MessageSquare, Zap } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Home() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   return (
     <div className="bg-slate-950 text-white min-h-screen">
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="mb-12">
-          <h1 className="text-4xl font-bold mb-4">Welcome back!</h1>
+          <h1 className="text-4xl font-bold mb-4">Welcome back, {user?.name || 'Learner'}!</h1>
           <p className="text-slate-400 text-lg">Continue your learning journey where you left off.</p>
         </div>
 

@@ -3,9 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, ArrowRight, BrainCircuit } from 'lucide-react';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
+import { useAuth } from '../context/AuthContext';
+
+import { api } from '../utils/api';
 
 export default function Signup() {
   const navigate = useNavigate();
+  const { token } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -16,10 +20,10 @@ export default function Signup() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    if (localStorage.getItem('token')) {
+    if (token) {
       navigate('/');
     }
-  }, [navigate]);
+  }, [token, navigate]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -31,20 +35,7 @@ export default function Signup() {
     setError('');
     
     try {
-      const response = await fetch('http://localhost:8000/auth/signup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Signup failed');
-      }
-
+      await api.post('/auth/signup', formData);
       setSuccess(true);
       // Redirect or show success message
     } catch (err) {
