@@ -31,3 +31,4 @@ class CourseInDB(CourseBase):
 
 class CourseResponse(CourseInDB):
     id: str
+    score: Optional[float] = None
