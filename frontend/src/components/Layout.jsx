@@ -2,13 +2,15 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Button } from './ui/Button';
 import { BrainCircuit, LogOut, Home, BookOpen, MessageSquare, BarChart3, Target, MessageCircle } from 'lucide-react';
 
+import { useAuth } from '../context/AuthContext';
+
 export default function Layout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { logout } = useAuth();
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('onboarded');
+    logout();
     navigate('/login');
   };
 

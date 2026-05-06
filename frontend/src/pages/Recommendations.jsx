@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { BrainCircuit, Star, Clock, Play, Sparkles, Filter, Loader2 } from 'lucide-react';
 
+import { api } from '../utils/api';
+
 export default function Recommendations() {
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
@@ -12,18 +14,7 @@ export default function Recommendations() {
   useEffect(() => {
     const fetchRecommendations = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const response = await fetch('http://localhost:8000/recommendations/personalized?limit=6', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch recommendations');
-        }
-
-        const data = await response.json();
+        const data = await api.get('/recommendations/personalized?limit=6');
         setCourses(data);
       } catch (err) {
         console.error('Error fetching recommendations:', err);

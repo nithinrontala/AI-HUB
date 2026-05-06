@@ -3,9 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowRight, BrainCircuit } from 'lucide-react';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
+import { useAuth } from '../context/AuthContext';
+
+import { api } from '../utils/api';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { login, token } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
@@ -14,10 +18,10 @@ export default function Login() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (localStorage.getItem('token')) {
+    if (token) {
       navigate('/');
     }
-  }, [navigate]);
+  }, [token, navigate]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -29,22 +33,10 @@ export default function Login() {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:8000/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
+      const data = await api.post('/auth/login', formData);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Login failed');
-      }
-
-      // Store token
-      localStorage.setItem('token', data.access_token);
+      // Store token via context
+      login(data.access_token);
       
       // Redirect to home/dashboard
       navigate('/');

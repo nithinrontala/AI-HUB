@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { BrainCircuit, Sparkles, Target, Zap, Rocket, ChevronRight } from 'lucide-react';
+import { api } from '../utils/api';
 
 export default function Onboarding() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
+  const [goal, setGoal] = useState('');
   const [interests, setInterests] = useState([]);
 
   const topics = [
@@ -22,12 +24,30 @@ export default function Onboarding() {
     );
   };
 
-  const handleNext = () => {
+  const handleGoalSelect = (selectedGoal) => {
+    setGoal(selectedGoal);
+    setStep(2);
+  };
+
+  const handleNext = async () => {
     if (step < 3) {
       setStep(step + 1);
     } else {
-      localStorage.setItem('onboarded', 'true');
-      navigate('/recommendations');
+      try {
+        await api.put('/auth/me', {
+          preferences: {
+            goal,
+            interests
+          }
+        });
+        localStorage.setItem('onboarded', 'true');
+        navigate('/recommendations');
+      } catch (error) {
+        console.error("Failed to save onboarding data:", error);
+        // Fallback to local storage even if API fails for now
+        localStorage.setItem('onboarded', 'true');
+        navigate('/recommendations');
+      }
     }
   };
 
@@ -57,7 +77,7 @@ export default function Onboarding() {
               {['Career Transition', 'Upskilling for Work', 'Personal Interest', 'Academic Research'].map(goal => (
                 <button 
                   key={goal}
-                  onClick={handleNext}
+                  onClick={() => handleGoalSelect(goal)}
                   className="glass-panel p-5 rounded-2xl border-slate-800 hover:border-indigo-500/50 hover:bg-white/5 transition-all text-left flex justify-between items-center group"
                 >
                   <span className="text-lg font-medium">{goal}</span>
