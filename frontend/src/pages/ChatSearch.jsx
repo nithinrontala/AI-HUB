@@ -1,30 +1,60 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { BrainCircuit, Send, Sparkles, MessageSquare, Search, Lightbulb, History, Trash2 } from 'lucide-react';
+import { BrainCircuit, Send, Sparkles, MessageSquare, Search, Lightbulb, History, Trash2, Loader2 } from 'lucide-react';
+import { api } from '../utils/api';
 
 export default function ChatSearch() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hello! I'm your AI Learning Assistant. How can I help you progress in your Neural Networks course today?" }
+    { role: 'assistant', content: "Hello! I'm your AI Learning Assistant. How can I help you progress in your learning journey today?" }
   ]);
+  const messagesEndRef = useRef(null);
 
-  const handleSend = (e) => {
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isTyping]);
+
+  const handleSend = async (e) => {
     e.preventDefault();
-    if (!query.trim()) return;
+    if (!query.trim() || isTyping) return;
     
-    setMessages([...messages, { role: 'user', content: query }]);
+    const userMessage = query.trim();
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setQuery('');
+    setIsTyping(true);
     
-    // Simulate AI response
-    setTimeout(() => {
+    try {
+      const data = await api.post('/chatbot/', { message: userMessage });
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: "That's a great question about activation functions. In practice, ReLU is often preferred because it helps mitigate the vanishing gradient problem. Would you like me to show you a code example in Python?" 
+        content: data.response 
       }]);
-    }, 1000);
+    } catch (error) {
+      console.error('Chat error:', error);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: "Sorry, I'm having trouble connecting to the brain right now. Please try again later." 
+      }]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const handleClearChat = async () => {
+    try {
+      await api.post('/chatbot/reset');
+      setMessages([{ role: 'assistant', content: "Chat history cleared. How can I help you now?" }]);
+    } catch (error) {
+      console.error('Error resetting chat:', error);
+    }
   };
 
   return (
@@ -33,7 +63,11 @@ export default function ChatSearch() {
       <aside className="w-72 border-r border-slate-800 bg-slate-900/50 hidden md:flex flex-col">
         <div className="p-6 border-b border-slate-800 flex items-center justify-between">
            <span className="font-bold text-sm tracking-widest uppercase text-slate-500">History</span>
-           <Trash2 className="h-4 w-4 text-slate-600 hover:text-red-400 cursor-pointer transition-colors" />
+            <Trash2 
+              className="h-4 w-4 text-slate-600 hover:text-red-400 cursor-pointer transition-colors" 
+              onClick={handleClearChat}
+              title="Clear Chat History"
+            />
         </div>
         <div className="flex-1 p-4 space-y-2 overflow-y-auto">
           {['ReLU vs Sigmoid', 'Backprop Intuition', 'Setup PyTorch Environment', 'Learning Roadmap 2024'].map((item, i) => (
@@ -84,6 +118,19 @@ export default function ChatSearch() {
                 </div>
               </div>
             ))}
+            {isTyping && (
+              <div className="flex justify-start animate-pulse">
+                <div className="max-w-[80%] p-4 rounded-2xl flex gap-4 glass-panel border-slate-800">
+                  <div className="mt-1 h-8 w-8 rounded-lg bg-indigo-500/20 flex items-center justify-center shrink-0">
+                    <Loader2 className="h-4 w-4 text-indigo-400 animate-spin" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-400">Assistant is thinking...</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
           </div>
         </div>
 
@@ -91,10 +138,13 @@ export default function ChatSearch() {
         <div className="p-6">
           <div className="max-w-3xl mx-auto space-y-4">
             <div className="flex flex-wrap gap-2 justify-center">
-               {['Explain Backprop', 'Recommend a course', 'Help with my code'].map(suggestion => (
+               {['Explain Neural Networks', 'Recommend ML courses', 'Help with PyTorch', 'What is Gradient Descent?'].map(suggestion => (
                  <button 
                   key={suggestion}
-                  onClick={() => setQuery(suggestion)}
+                  onClick={() => {
+                    setQuery(suggestion);
+                    // Optionally auto-trigger send
+                  }}
                   className="px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-400 hover:border-indigo-500/50 hover:text-indigo-400 transition-all flex items-center gap-2"
                  >
                    <Lightbulb className="h-3 w-3" />
@@ -106,9 +156,10 @@ export default function ChatSearch() {
             <form onSubmit={handleSend} className="relative">
               <Input 
                 placeholder="Ask anything..." 
-                className="pr-12 h-14 rounded-2xl bg-slate-900 border-slate-800 focus:border-indigo-500"
+                className="pr-12 h-14 rounded-2xl bg-slate-900 border-slate-800 focus:border-indigo-500 disabled:opacity-50"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                disabled={isTyping}
               />
               <button 
                 type="submit"

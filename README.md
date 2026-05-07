@@ -56,7 +56,7 @@ A modern, AI-powered learning platform featuring content-based course recommenda
 1. **Navigate to the frontend directory:**
    ```powershell
    cd frontend
-   ```
+   ```cd
 
 2. **Install dependencies:**
    ```powershell
