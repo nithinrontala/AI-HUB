@@ -21,6 +21,8 @@ from routes.courses import router as courses_router
 from routes.recommendations import router as recommendations_router
 from routes.interactions import router as interactions_router
 from routes.chatbot import router as chatbot_router
+from routes.learning_paths import router as learning_paths_router
+from routes.dashboard import router as dashboard_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -46,6 +48,8 @@ app.include_router(courses_router)
 app.include_router(recommendations_router)
 app.include_router(interactions_router)
 app.include_router(chatbot_router)
+app.include_router(learning_paths_router)
+app.include_router(dashboard_router)
 
 @app.get("/")
 async def root():
