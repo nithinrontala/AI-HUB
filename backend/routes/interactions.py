@@ -4,6 +4,7 @@ from core.database import get_database
 from core.auth import get_current_user
 from datetime import datetime
 from bson import ObjectId
+from services.learning_path_service import learning_path_service
 
 router = APIRouter(prefix="/interactions", tags=["interactions"])
 
@@ -29,6 +30,14 @@ async def create_interaction(interaction: InteractionCreate, current_user: dict 
     interaction_dict["user_id"] = str(current_user["_id"])
     
     result = await db["interactions"].insert_one(interaction_dict)
+    
+    # If course is completed, update learning path steps
+    if interaction.interaction_type == "course_completion" and interaction.course_id:
+        # Find all learning paths for this user containing this course and mark as completed
+        user_id = str(current_user["_id"])
+        paths_cursor = db["learning_paths"].find({"user_id": user_id, "steps.course_id": interaction.course_id})
+        async for path in paths_cursor:
+            await learning_path_service.update_step_status(str(path["_id"]), interaction.course_id, True)
     
     return {**interaction_dict, "id": str(result.inserted_id)}
 
