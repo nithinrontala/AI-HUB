@@ -7,6 +7,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 class RecommenderService:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self.model = SentenceTransformer(model_name)
+        self.classifier = None # Lazy load to save memory if not used
         self.interaction_weights = {
             "video_view": 1,
             "quiz_attempt": 2,
@@ -14,10 +15,41 @@ class RecommenderService:
             "course_completion": 5
         }
 
+    def _get_classifier(self):
+        if self.classifier is None:
+            from transformers import pipeline
+            # Using a smaller model for zero-shot classification
+            self.classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
+        return self.classifier
+
     def generate_embedding(self, text: str) -> List[float]:
         """Generates an embedding for a given text."""
         embedding = self.model.encode(text)
         return embedding.tolist()
+
+    def semantic_search(self, query: str, all_courses: List[Dict[str, Any]], limit: int = 5) -> List[Dict[str, Any]]:
+        """Performs semantic search on courses using the query embedding."""
+        query_embedding = self.generate_embedding(query)
+        results = []
+        
+        for course in all_courses:
+            embedding = course.get("embedding")
+            if embedding:
+                similarity = self.calculate_similarity(query_embedding, embedding)
+                course_copy = course.copy()
+                course_copy["similarity"] = float(similarity)
+                course_copy["id"] = str(course.get("_id", course.get("id")))
+                results.append(course_copy)
+        
+        # Sort by similarity descending
+        results.sort(key=lambda x: x["similarity"], reverse=True)
+        return results[:limit]
+
+    def zero_shot_classify(self, text: str, candidate_labels: List[str]) -> Dict[str, Any]:
+        """Classifies text into candidate labels without training."""
+        classifier = self._get_classifier()
+        result = classifier(text, candidate_labels, multi_label=True)
+        return result
 
     def prepare_course_text(self, course: Dict[str, Any]) -> str:
         """Combines course metadata into a single string for embedding."""
