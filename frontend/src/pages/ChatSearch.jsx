@@ -9,6 +9,10 @@ export default function ChatSearch() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [view, setView] = useState('chat'); // 'chat' or 'search'
+  const [searchMode, setSearchMode] = useState('semantic'); // 'semantic' or 'keyword'
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [messages, setMessages] = useState([
     { role: 'assistant', content: "Hello! I'm your AI Learning Assistant. How can I help you progress in your learning journey today?" }
   ]);
@@ -26,6 +30,11 @@ export default function ChatSearch() {
     e.preventDefault();
     if (!query.trim() || isTyping) return;
     
+    if (view === 'search') {
+      handleSearch();
+      return;
+    }
+
     const userMessage = query.trim();
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setQuery('');
@@ -45,6 +54,22 @@ export default function ChatSearch() {
       }]);
     } finally {
       setIsTyping(false);
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!query.trim() || isSearching) return;
+    
+    setIsSearching(true);
+    setView('search');
+    
+    try {
+      const data = await api.get(`/courses/search/?q=${encodeURIComponent(query)}&mode=${searchMode}`);
+      setSearchResults(data);
+    } catch (error) {
+      console.error('Search error:', error);
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -95,43 +120,122 @@ export default function ChatSearch() {
              <div className="p-2 bg-indigo-500/20 rounded-lg">
                <BrainCircuit className="h-5 w-5 text-indigo-400" />
              </div>
-             <h1 className="font-bold">AI Assistant</h1>
+             <div className="flex bg-slate-800/50 p-1 rounded-xl">
+               <button 
+                onClick={() => setView('chat')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${view === 'chat' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+               >
+                 Chat
+               </button>
+               <button 
+                onClick={() => setView('search')}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${view === 'search' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+               >
+                 Search
+               </button>
+             </div>
           </div>
-          <button onClick={() => navigate('/')} className="text-slate-500 hover:text-white transition-colors">
-            <Search className="h-5 w-5" />
-          </button>
+          
+          {view === 'search' && (
+            <div className="flex items-center gap-2 bg-slate-800/30 px-3 py-1.5 rounded-full border border-slate-700/50">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Semantic</span>
+              <button 
+                onClick={() => setSearchMode(searchMode === 'semantic' ? 'keyword' : 'semantic')}
+                className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${searchMode === 'semantic' ? 'bg-indigo-600' : 'bg-slate-700'}`}
+              >
+                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all duration-300 ${searchMode === 'semantic' ? 'right-1' : 'left-1'}`}></div>
+              </button>
+            </div>
+          )}
         </header>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          <div className="max-w-3xl mx-auto space-y-6">
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-slide-up`}>
-                <div className={`max-w-[80%] p-4 rounded-2xl flex gap-4 ${msg.role === 'user' ? 'bg-indigo-600 text-white' : 'glass-panel border-slate-800'}`}>
-                  {msg.role === 'assistant' && (
-                    <div className="mt-1 h-8 w-8 rounded-lg bg-indigo-500/20 flex items-center justify-center shrink-0">
-                      <Sparkles className="h-4 w-4 text-indigo-400" />
+          {view === 'chat' ? (
+            <div className="max-w-3xl mx-auto space-y-6">
+              {messages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-slide-up`}>
+                  <div className={`max-w-[80%] p-4 rounded-2xl flex gap-4 ${msg.role === 'user' ? 'bg-indigo-600 text-white' : 'glass-panel border-slate-800'}`}>
+                    {msg.role === 'assistant' && (
+                      <div className="mt-1 h-8 w-8 rounded-lg bg-indigo-500/20 flex items-center justify-center shrink-0">
+                        <Sparkles className="h-4 w-4 text-indigo-400" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm leading-relaxed">{msg.content}</p>
                     </div>
-                  )}
-                  <div>
-                    <p className="text-sm leading-relaxed">{msg.content}</p>
                   </div>
                 </div>
-              </div>
-            ))}
-            {isTyping && (
-              <div className="flex justify-start animate-pulse">
-                <div className="max-w-[80%] p-4 rounded-2xl flex gap-4 glass-panel border-slate-800">
-                  <div className="mt-1 h-8 w-8 rounded-lg bg-indigo-500/20 flex items-center justify-center shrink-0">
-                    <Loader2 className="h-4 w-4 text-indigo-400 animate-spin" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-400">Assistant is thinking...</p>
+              ))}
+              {isTyping && (
+                <div className="flex justify-start animate-pulse">
+                  <div className="max-w-[80%] p-4 rounded-2xl flex gap-4 glass-panel border-slate-800">
+                    <div className="mt-1 h-8 w-8 rounded-lg bg-indigo-500/20 flex items-center justify-center shrink-0">
+                      <Loader2 className="h-4 w-4 text-indigo-400 animate-spin" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-400">Assistant is thinking...</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          ) : (
+            <div className="max-w-5xl mx-auto space-y-8">
+              {isSearching ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                  <Loader2 className="h-10 w-10 text-indigo-500 animate-spin" />
+                  <p className="text-slate-400 animate-pulse">Scanning knowledge base semantically...</p>
+                </div>
+              ) : searchResults.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {searchResults.map((course, idx) => (
+                    <div 
+                      key={course.id || idx}
+                      className="group bg-slate-900/40 rounded-3xl p-6 border border-slate-800 hover:border-indigo-500/50 transition-all hover:shadow-2xl hover:shadow-indigo-500/10 flex flex-col"
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <span className="px-3 py-1 bg-indigo-500/10 rounded-full text-[10px] font-black text-indigo-400 uppercase tracking-widest border border-indigo-500/20">
+                          {course.tags?.[0] || 'AI Course'}
+                        </span>
+                        {course.similarity && (
+                          <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-black">
+                            <Sparkles className="h-3 w-3" />
+                            {Math.round(course.similarity * 100)}% RELEVANCE
+                          </div>
+                        )}
+                      </div>
+                      <h3 className="text-lg font-bold mb-2 group-hover:text-indigo-400 transition-colors line-clamp-1">{course.title}</h3>
+                      <p className="text-slate-400 text-xs line-clamp-2 mb-6 flex-1">{course.description}</p>
+                      <div className="flex items-center justify-between">
+                         <div className="flex gap-2">
+                           {course.tags?.slice(0, 2).map(tag => (
+                             <span key={tag} className="text-[10px] text-slate-500">#{tag}</span>
+                           ))}
+                         </div>
+                         <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="h-8 text-indigo-400 hover:text-white hover:bg-indigo-600 rounded-xl px-4"
+                          onClick={() => navigate(`/course/${course.id}`)}
+                         >
+                           View Details
+                         </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-20 space-y-4">
+                   <div className="w-16 h-16 bg-slate-900 rounded-3xl flex items-center justify-center mx-auto border border-slate-800">
+                     <Search className="h-8 w-8 text-slate-600" />
+                   </div>
+                   <h2 className="text-xl font-bold">Search for Courses</h2>
+                   <p className="text-slate-500 max-w-sm mx-auto">Try "Deep Learning for Vision" or "Introduction to LLMs" to see semantic search in action.</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Input Footer */}
@@ -155,17 +259,17 @@ export default function ChatSearch() {
             
             <form onSubmit={handleSend} className="relative">
               <Input 
-                placeholder="Ask anything..." 
-                className="pr-12 h-14 rounded-2xl bg-slate-900 border-slate-800 focus:border-indigo-500 disabled:opacity-50"
+                placeholder={view === 'chat' ? "Ask anything..." : "Search courses semantically..."}
+                className="pr-12 h-14 rounded-2xl bg-slate-900 border-slate-800 focus:border-indigo-500 disabled:opacity-50 shadow-2xl"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                disabled={isTyping}
+                disabled={isTyping || isSearching}
               />
               <button 
                 type="submit"
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-indigo-500 rounded-xl hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/30"
               >
-                <Send className="h-5 w-5" />
+                {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : (view === 'chat' ? <Send className="h-5 w-5" /> : <Search className="h-5 w-5" />)}
               </button>
             </form>
           </div>

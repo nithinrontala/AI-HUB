@@ -12,11 +12,23 @@ router = APIRouter(prefix="/courses", tags=["courses"])
 async def create_course(course: CourseCreate):
     db = get_database()
     
-    # Generate embedding for the new course
-    course_text = recommender_service.prepare_course_text(course.model_dump())
-    embedding = recommender_service.generate_embedding(course_text)
-    
     course_dict = course.model_dump()
+    course_text_initial = recommender_service.prepare_course_text(course_dict)
+    
+    # Auto-tagging using Zero-Shot Classification
+    candidate_labels = ["Machine Learning", "Deep Learning", "NLP", "Computer Vision", "Data Science", "Python", "AI Ethics", "Robotics"]
+    classification = recommender_service.zero_shot_classify(course_text_initial, candidate_labels)
+    auto_tags = [label for label, score in zip(classification["labels"], classification["scores"]) if score > 0.6]
+    
+    # Merge existing tags with auto-tags
+    existing_tags = set(course_dict.get("tags", []))
+    existing_tags.update(auto_tags)
+    course_dict["tags"] = list(existing_tags)
+    
+    # Generate final embedding including new tags
+    course_text_final = recommender_service.prepare_course_text(course_dict)
+    embedding = recommender_service.generate_embedding(course_text_final)
+    
     course_in_db = CourseInDB(
         **course_dict,
         embedding=embedding,
@@ -121,21 +133,63 @@ async def delete_course(course_id: str):
     return None
 
 @router.get("/search/", response_model=List[CourseResponse])
-async def search_courses(q: str):
+async def search_courses(q: str, mode: str = "semantic"):
     db = get_database()
-    # Basic text search using regex (case-insensitive)
-    cursor = db["courses"].find({
-        "$or": [
-            {"title": {"$regex": q, "$options": "i"}},
-            {"description": {"$regex": q, "$options": "i"}},
-            {"tags": {"$regex": q, "$options": "i"}}
-        ]
-    })
-    courses = []
-    async for doc in cursor:
-        doc["id"] = str(doc["_id"])
-        courses.append(doc)
-    return courses
+    
+    if mode == "keyword":
+        # Basic text search using regex (case-insensitive)
+        cursor = db["courses"].find({
+            "$or": [
+                {"title": {"$regex": q, "$options": "i"}},
+                {"description": {"$regex": q, "$options": "i"}},
+                {"tags": {"$regex": q, "$options": "i"}}
+            ]
+        })
+        courses = []
+        async for doc in cursor:
+            doc["id"] = str(doc["_id"])
+            courses.append(doc)
+        return courses
+    else:
+        # Semantic search
+        cursor = db["courses"].find()
+        all_courses = []
+        async for doc in cursor:
+            all_courses.append(doc)
+            
+        results = recommender_service.semantic_search(q, all_courses)
+        return results
+
+@router.post("/{course_id}/auto-tag")
+async def auto_tag_course(course_id: str, candidate_labels: Optional[List[str]] = None):
+    db = get_database()
+    if not ObjectId.is_valid(course_id):
+        raise HTTPException(status_code=400, detail="Invalid course ID")
+        
+    course = await db["courses"].find_one({"_id": ObjectId(course_id)})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+        
+    if not candidate_labels:
+        candidate_labels = ["Machine Learning", "Deep Learning", "Natural Language Processing", 
+                           "Computer Vision", "Data Science", "Python", "AI Ethics"]
+                           
+    text = f"{course.get('title', '')} {course.get('description', '')}"
+    classification = recommender_service.zero_shot_classify(text, candidate_labels)
+    
+    # Filter labels with score > 0.5
+    new_tags = [label for label, score in zip(classification["labels"], classification["scores"]) if score > 0.5]
+    
+    # Update course with new tags
+    current_tags = set(course.get("tags", []))
+    current_tags.update(new_tags)
+    
+    await db["courses"].update_one(
+        {"_id": ObjectId(course_id)},
+        {"$set": {"tags": list(current_tags), "updated_at": datetime.utcnow()}}
+    )
+    
+    return {"id": course_id, "added_tags": new_tags, "all_tags": list(current_tags)}
 
 @router.post("/refresh-embeddings")
 async def refresh_all_embeddings():
