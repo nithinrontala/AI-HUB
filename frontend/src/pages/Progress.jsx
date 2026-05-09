@@ -24,13 +24,15 @@ export default function Progress() {
 
         const headers = { "Authorization": `Bearer ${token}` };
         
-        // Fetch stats and leaderboard in parallel
         const [statsRes, lbRes] = await Promise.all([
           fetch(`${API_BASE_URL}/dashboard/stats`, { headers }),
           fetch(`${API_BASE_URL}/dashboard/leaderboard`, { headers })
         ]);
 
-        if (!statsRes.ok) throw new Error("Failed to fetch dashboard stats");
+        if (!statsRes.ok) {
+          const errData = await statsRes.json().catch(() => ({}));
+          throw new Error(errData.detail || `Error ${statsRes.status}: Failed to fetch stats`);
+        }
         
         const statsData = await statsRes.json();
         const lbData = lbRes.ok ? await lbRes.json() : [];
@@ -38,7 +40,11 @@ export default function Progress() {
         setData(statsData);
         setLeaderboard(lbData);
       } catch (err) {
-        setError(err.message);
+        console.error("Dashboard Fetch Error:", err);
+        setError(err.message === "Failed to fetch" 
+          ? "Cannot connect to server. Please ensure the backend is running at http://localhost:8000" 
+          : err.message
+        );
       } finally {
         setLoading(false);
       }
@@ -57,10 +63,17 @@ export default function Progress() {
 
   if (error) {
     return (
-      <div className="bg-slate-950 min-h-screen flex items-center justify-center text-white">
-        <div className="text-center">
-          <p className="text-red-400 mb-4">{error}</p>
-          <Button onClick={() => window.location.reload()}>Retry</Button>
+      <div className="bg-slate-950 min-h-screen flex items-center justify-center text-white p-6">
+        <div className="glass-panel p-10 rounded-[2rem] border-red-500/20 text-center max-w-md">
+          <div className="p-4 bg-red-500/10 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-6">
+             <Zap className="h-8 w-8 text-red-500" />
+          </div>
+          <h2 className="text-2xl font-bold mb-2">Connection Error</h2>
+          <p className="text-slate-400 mb-8">{error}</p>
+          <div className="flex flex-col gap-3">
+            <Button onClick={() => window.location.reload()} className="w-full">Try Again</Button>
+            <Button onClick={() => navigate('/')} variant="outline" className="w-full border-slate-800">Back to Home</Button>
+          </div>
         </div>
       </div>
     );
@@ -83,7 +96,7 @@ export default function Progress() {
       <div className="max-w-6xl mx-auto">
         <header className="mb-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <h1 className="text-4xl font-bold mb-2">Performance Analytics</h1>
+            <h1 className="text-4xl font-bold mb-2">Welcome, {data.name}</h1>
             <p className="text-slate-400 text-lg">Tracking your evolution as an AI Engineer.</p>
           </div>
           <div className="flex gap-4">
@@ -168,8 +181,9 @@ export default function Progress() {
            
            <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
               <div className="space-y-4">
-                 {leaderboard.map((user, i) => (
+                 {leaderboard.length > 0 ? leaderboard.map((user, i) => (
                    <div key={i} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
+                     user.name === data.name ? 'bg-indigo-500/10 border-indigo-500/50' : 
                      i === 0 ? 'bg-yellow-500/5 border-yellow-500/20 shadow-lg shadow-yellow-500/5' : 'bg-slate-900/50 border-slate-800'
                    }`}>
                       <div className="flex items-center gap-4">
@@ -181,7 +195,7 @@ export default function Progress() {
                             {i + 1}
                          </div>
                          <div>
-                            <div className="font-bold">{user.name}</div>
+                            <div className="font-bold">{user.name} {user.name === data.name && '(You)'}</div>
                             <div className="text-xs text-slate-500 uppercase tracking-widest">{i === 0 ? 'Top Performer' : 'Elite Learner'}</div>
                          </div>
                       </div>
@@ -190,7 +204,9 @@ export default function Progress() {
                          <div className="text-[10px] text-slate-500 font-bold uppercase">Points</div>
                       </div>
                    </div>
-                 ))}
+                 )) : (
+                   <div className="text-center py-12 text-slate-500 italic">No leaderboard data available yet.</div>
+                 )}
               </div>
               
               <div className="bg-indigo-600/10 rounded-[2rem] p-8 border border-indigo-500/20 flex flex-col justify-center items-center text-center">

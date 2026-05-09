@@ -14,4 +14,4 @@ pandas
 scikit-learn
 scipy
 transformers
-torch
+huggingface_hub

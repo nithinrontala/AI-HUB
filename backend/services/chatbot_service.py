@@ -1,57 +1,130 @@
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 import logging
+import asyncio
+from huggingface_hub import InferenceClient
+from core.config import settings
+from services.rag_service import rag_service
+from core.database import get_database
 
 logger = logging.getLogger(__name__)
 
+
 class ChatbotService:
-    def __init__(self, model_name="microsoft/DialoGPT-medium"):
-        logger.info(f"Loading chatbot model: {model_name}")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name)
-        self.histories = {} # Dict to store history per user
-        logger.info("Chatbot model loaded successfully")
+    """
+    AI Chatbot service powered by Hugging Face Inference API with RAG.
+    Uses a powerful instruction-tuned model with streaming support
+    for real-time, token-by-token responses grounded in course materials.
+    """
 
-    def get_response(self, user_input: str, user_id: str):
+    def __init__(self):
+        self.model_id = "HuggingFaceH4/zephyr-7b-beta"
+        self.client = InferenceClient(
+            model=self.model_id,
+            token=settings.HF_API_TOKEN,
+        )
+        # Per-user conversation histories
+        self.histories: dict[str, list[dict]] = {}
+        # Base system prompt
+        self.system_prompt = (
+            "You are an expert AI Learning Assistant for an online education platform "
+            "called AI Learning Hub. You help students understand artificial intelligence, "
+            "machine learning, deep learning, NLP, computer vision, and related topics.\n\n"
+            "Use the provided context from course materials to answer the user's question. "
+            "If the answer isn't in the context, use your general knowledge but mention "
+            "it's not from the course PDFs.\n\n"
+            "Explain concepts clearly, recommend learning resources, and provide "
+            "code examples when helpful. Keep responses concise but thorough. "
+            "Use markdown formatting for code blocks and lists when appropriate."
+        )
+        logger.info(f"ChatbotService initialized with model: {self.model_id}")
+
+    async def _get_messages(self, user_id: str, user_input: str) -> list[dict]:
+        """Build the messages list for the chat completion API with RAG context."""
+        if user_id not in self.histories:
+            self.histories[user_id] = []
+
+        # 1. Retrieve relevant context using RAG
+        db = get_database()
+        context = await rag_service.retrieve_context(user_input, db)
+        
+        # 2. Build the augmented system prompt
+        augmented_system_prompt = self.system_prompt
+        if context:
+            augmented_system_prompt += f"\n\nRELEVANT COURSE CONTEXT:\n{context}"
+
+        # Add the new user message to history
+        self.histories[user_id].append({"role": "user", "content": user_input})
+
+        # Keep only the last 10 messages to avoid token limits (RAG context takes space)
+        if len(self.histories[user_id]) > 10:
+            self.histories[user_id] = self.histories[user_id][-10:]
+
+        # Build full messages list with augmented system prompt
+        messages = [{"role": "system", "content": augmented_system_prompt}]
+        messages.extend(self.histories[user_id])
+        return messages
+
+    async def get_response(self, user_input: str, user_id: str) -> str:
+        """Get a complete (non-streaming) response from the model."""
         try:
-            # Get or initialize history for this user
-            chat_history_ids = self.histories.get(user_id)
+            messages = await self._get_messages(user_id, user_input)
+            response = self.client.chat_completion(
+                messages=messages,
+                max_tokens=1024,
+                temperature=0.7,
+                top_p=0.9,
+                stream=False,
+            )
+            assistant_message = response.choices[0].message.content
 
-            # Encode the new user input, add the eos_token and return a tensor in Pytorch
-            new_user_input_ids = self.tokenizer.encode(user_input + self.tokenizer.eos_token, return_tensors='pt')
+            # Store assistant reply in history
+            self.histories[user_id].append(
+                {"role": "assistant", "content": assistant_message}
+            )
+            return assistant_message
 
-            # Append the new user input tokens to the chat history
-            bot_input_ids = torch.cat([chat_history_ids, new_user_input_ids], dim=-1) if chat_history_ids is not None else new_user_input_ids
+        except Exception as e:
+            logger.error(f"Error generating response for user {user_id}: {e}")
+            return "I'm sorry, I'm having trouble connecting right now. Please try again."
 
-            # Generate a response
-            updated_history_ids = self.model.generate(
-                bot_input_ids, 
-                max_length=1000, 
-                pad_token_id=self.tokenizer.eos_token_id,
-                no_repeat_ngram_size=3,       
-                do_sample=True, 
-                top_k=100, 
-                top_p=0.7,
-                temperature=0.8
+    async def stream_response(self, user_input: str, user_id: str):
+        """
+        Async generator that yields tokens one-by-one from the model.
+        Uses RAG context to ground the response.
+        """
+        try:
+            messages = await self._get_messages(user_id, user_input)
+            
+            # The InferenceClient.chat_completion returns a generator when stream=True
+            # We wrap it in an async-friendly way
+            stream = self.client.chat_completion(
+                messages=messages,
+                max_tokens=1024,
+                temperature=0.7,
+                top_p=0.9,
+                stream=True,
             )
 
-            # Store the updated history
-            self.histories[user_id] = updated_history_ids
+            full_response = ""
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    token = chunk.choices[0].delta.content
+                    full_response += token
+                    yield token
 
-            # Get the generated response tokens
-            response_ids = updated_history_ids[:, bot_input_ids.shape[-1]:]
-            
-            # Decode the response
-            response_text = self.tokenizer.decode(response_ids[0], skip_special_tokens=True)
-            
-            return response_text
+            # Store the complete assistant reply in history
+            self.histories[user_id].append(
+                {"role": "assistant", "content": full_response}
+            )
+
         except Exception as e:
-            logger.error(f"Error generating chatbot response for user {user_id}: {e}")
-            return "I'm sorry, I'm having trouble thinking right now. Can we try again?"
+            logger.error(f"Streaming error for user {user_id}: {e}")
+            yield "I'm sorry, I'm having trouble connecting right now. Please try again."
 
     def reset_chat(self, user_id: str):
+        """Clear conversation history for a user."""
         if user_id in self.histories:
             del self.histories[user_id]
+
 
 # Global instance
 chatbot_service = ChatbotService()

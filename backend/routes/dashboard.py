@@ -44,15 +44,20 @@ async def get_leaderboard(limit: int = 5):
     ]
     
     leaderboard_data = []
-    cursor = db["interactions"].aggregate(pipeline)
-    async for entry in cursor:
-        user_id = entry["_id"]
-        user = await db["users"].find_one({"_id": ObjectId(user_id)})
-        if user:
-            leaderboard_data.append({
-                "name": user.get("name", "Anonymous"),
-                "points": entry["total_points"]
-            })
+    try:
+        cursor = db["interactions"].aggregate(pipeline)
+        async for entry in cursor:
+            user_id = entry["_id"]
+            if not user_id or not ObjectId.is_valid(user_id):
+                continue
+            user = await db["users"].find_one({"_id": ObjectId(user_id)})
+            if user:
+                leaderboard_data.append({
+                    "name": user.get("name", "Anonymous"),
+                    "points": entry["total_points"]
+                })
+    except Exception as e:
+        print(f"Leaderboard error: {e}")
             
     return leaderboard_data
 
@@ -126,6 +131,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
         total_points += weights.get(interaction["interaction_type"], 1)
 
     return {
+        "name": current_user.get("name", "Learner"),
         "enrolled_count": enrolled_count,
         "completed_count": completed_count,
         "total_points": total_points,
