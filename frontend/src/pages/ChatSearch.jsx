@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { BrainCircuit, Send, Sparkles, MessageSquare, Search, Lightbulb, History, Trash2, Loader2 } from 'lucide-react';
+import { BrainCircuit, Send, Sparkles, MessageSquare, Search, Lightbulb, History, Trash2, Loader2, StopCircle } from 'lucide-react';
 import { api } from '../utils/api';
 
 export default function ChatSearch() {
@@ -13,10 +13,12 @@ export default function ChatSearch() {
   const [searchMode, setSearchMode] = useState('semantic'); // 'semantic' or 'keyword'
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [streamingContent, setStreamingContent] = useState('');
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hello! I'm your AI Learning Assistant. How can I help you progress in your learning journey today?" }
+    { role: 'assistant', content: "Hello! I'm your AI Learning Assistant powered by real-time AI. Ask me anything about machine learning, deep learning, NLP, or any AI topic!" }
   ]);
   const messagesEndRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -24,12 +26,105 @@ export default function ChatSearch() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isTyping]);
+  }, [messages, isTyping, streamingContent]);
+
+  /**
+   * Stream chat response from the backend SSE endpoint.
+   * Reads tokens one-by-one and updates the UI in real-time.
+   */
+  const streamChat = useCallback(async (userMessage) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: "You must be logged in to use the AI Chatbot. Please log in again." 
+      }]);
+      setIsTyping(false);
+      return;
+    }
+    abortControllerRef.current = new AbortController();
+
+    try {
+      const response = await fetch('http://localhost:8000/chatbot/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ message: userMessage }),
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+
+            // Check for end-of-stream signal
+            if (data === '[DONE]') {
+              break;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.token) {
+                accumulated += parsed.token;
+                setStreamingContent(accumulated);
+              }
+            } catch {
+              // Skip malformed JSON chunks
+            }
+          }
+        }
+      }
+
+      // Move the streamed content into messages as a complete assistant message
+      if (accumulated) {
+        setMessages(prev => [...prev, { role: 'assistant', content: accumulated }]);
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        // User cancelled the stream
+        const currentContent = streamingContent || 'Response was stopped.';
+        setMessages(prev => [...prev, { role: 'assistant', content: currentContent + '\n\n*(Response stopped)*' }]);
+      } else {
+        console.error('Stream error:', error);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: "Sorry, I couldn't connect to the AI service. Please check that the backend is running and your HF_API_TOKEN is configured."
+        }]);
+      }
+    } finally {
+      setStreamingContent('');
+      setIsTyping(false);
+      abortControllerRef.current = null;
+    }
+  }, [streamingContent]);
+
+  const handleStopStreaming = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  };
 
   const handleSend = async (e) => {
     e.preventDefault();
     if (!query.trim() || isTyping) return;
-    
+
     if (view === 'search') {
       handleSearch();
       return;
@@ -39,30 +134,18 @@ export default function ChatSearch() {
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setQuery('');
     setIsTyping(true);
-    
-    try {
-      const data = await api.post('/chatbot/', { message: userMessage });
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: data.response 
-      }]);
-    } catch (error) {
-      console.error('Chat error:', error);
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: "Sorry, I'm having trouble connecting to the brain right now. Please try again later." 
-      }]);
-    } finally {
-      setIsTyping(false);
-    }
+    setStreamingContent('');
+
+    // Use streaming endpoint for real-time responses
+    streamChat(userMessage);
   };
 
   const handleSearch = async () => {
     if (!query.trim() || isSearching) return;
-    
+
     setIsSearching(true);
     setView('search');
-    
+
     try {
       const data = await api.get(`/courses/search/?q=${encodeURIComponent(query)}&mode=${searchMode}`);
       setSearchResults(data);
@@ -77,9 +160,60 @@ export default function ChatSearch() {
     try {
       await api.post('/chatbot/reset');
       setMessages([{ role: 'assistant', content: "Chat history cleared. How can I help you now?" }]);
+      setStreamingContent('');
     } catch (error) {
       console.error('Error resetting chat:', error);
     }
+  };
+
+  /**
+   * Renders message content with basic markdown-like formatting.
+   * Handles code blocks, bold text, and line breaks.
+   */
+  const renderMessageContent = (content) => {
+    if (!content) return null;
+
+    // Split by code blocks (```...```)
+    const parts = content.split(/(```[\s\S]*?```)/g);
+
+    return parts.map((part, i) => {
+      if (part.startsWith('```') && part.endsWith('```')) {
+        const codeContent = part.slice(3, -3);
+        const firstNewline = codeContent.indexOf('\n');
+        const language = firstNewline > 0 ? codeContent.slice(0, firstNewline).trim() : '';
+        const code = firstNewline > 0 ? codeContent.slice(firstNewline + 1) : codeContent;
+
+        return (
+          <div key={i} className="my-3 rounded-xl overflow-hidden border border-slate-700/50">
+            {language && (
+              <div className="bg-slate-800/80 px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 border-b border-slate-700/50">
+                {language}
+              </div>
+            )}
+            <pre className="bg-slate-900/80 p-4 overflow-x-auto">
+              <code className="text-sm text-emerald-300 font-mono">{code}</code>
+            </pre>
+          </div>
+        );
+      }
+
+      // Process inline formatting
+      return (
+        <span key={i}>
+          {part.split('\n').map((line, j) => (
+            <span key={j}>
+              {j > 0 && <br />}
+              {line.split(/(\*\*.*?\*\*)/g).map((segment, k) => {
+                if (segment.startsWith('**') && segment.endsWith('**')) {
+                  return <strong key={k} className="font-bold text-white">{segment.slice(2, -2)}</strong>;
+                }
+                return <span key={k}>{segment}</span>;
+              })}
+            </span>
+          ))}
+        </span>
+      );
+    });
   };
 
   return (
@@ -95,12 +229,17 @@ export default function ChatSearch() {
             />
         </div>
         <div className="flex-1 p-4 space-y-2 overflow-y-auto">
-          {['ReLU vs Sigmoid', 'Backprop Intuition', 'Setup PyTorch Environment', 'Learning Roadmap 2024'].map((item, i) => (
+          {messages.filter(m => m.role === 'user').slice(-6).map((msg, i) => (
             <div key={i} className="p-3 rounded-xl hover:bg-white/5 cursor-pointer flex items-center gap-3 group">
-              <MessageSquare className="h-4 w-4 text-slate-500 group-hover:text-indigo-400" />
-              <span className="text-sm text-slate-400 group-hover:text-slate-200 truncate">{item}</span>
+              <MessageSquare className="h-4 w-4 text-slate-500 group-hover:text-indigo-400 shrink-0" />
+              <span className="text-sm text-slate-400 group-hover:text-slate-200 truncate">{msg.content}</span>
             </div>
           ))}
+          {messages.filter(m => m.role === 'user').length === 0 && (
+            <div className="text-center py-8">
+              <p className="text-xs text-slate-600">Your questions will appear here</p>
+            </div>
+          )}
         </div>
         <div className="p-6 border-t border-slate-800">
            <Button variant="outline" className="w-full border-slate-700" onClick={() => navigate('/learning-path')}>
@@ -135,18 +274,28 @@ export default function ChatSearch() {
                </button>
              </div>
           </div>
-          
-          {view === 'search' && (
-            <div className="flex items-center gap-2 bg-slate-800/30 px-3 py-1.5 rounded-full border border-slate-700/50">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Semantic</span>
-              <button 
-                onClick={() => setSearchMode(searchMode === 'semantic' ? 'keyword' : 'semantic')}
-                className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${searchMode === 'semantic' ? 'bg-indigo-600' : 'bg-slate-700'}`}
-              >
-                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all duration-300 ${searchMode === 'semantic' ? 'right-1' : 'left-1'}`}></div>
-              </button>
-            </div>
-          )}
+
+          <div className="flex items-center gap-3">
+            {/* Live indicator when streaming */}
+            {isTyping && (
+              <div className="flex items-center gap-2 bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/20 animate-pulse">
+                <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Live</span>
+              </div>
+            )}
+            
+            {view === 'search' && (
+              <div className="flex items-center gap-2 bg-slate-800/30 px-3 py-1.5 rounded-full border border-slate-700/50">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Semantic</span>
+                <button 
+                  onClick={() => setSearchMode(searchMode === 'semantic' ? 'keyword' : 'semantic')}
+                  className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${searchMode === 'semantic' ? 'bg-indigo-600' : 'bg-slate-700'}`}
+                >
+                  <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all duration-300 ${searchMode === 'semantic' ? 'right-1' : 'left-1'}`}></div>
+                </button>
+              </div>
+            )}
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -160,20 +309,42 @@ export default function ChatSearch() {
                         <Sparkles className="h-4 w-4 text-indigo-400" />
                       </div>
                     )}
-                    <div>
-                      <p className="text-sm leading-relaxed">{msg.content}</p>
+                    <div className="text-sm leading-relaxed overflow-hidden">
+                      {renderMessageContent(msg.content)}
                     </div>
                   </div>
                 </div>
               ))}
-              {isTyping && (
-                <div className="flex justify-start animate-pulse">
+
+              {/* Real-time streaming message */}
+              {isTyping && streamingContent && (
+                <div className="flex justify-start animate-slide-up">
+                  <div className="max-w-[80%] p-4 rounded-2xl flex gap-4 glass-panel border-slate-800 border-indigo-500/30">
+                    <div className="mt-1 h-8 w-8 rounded-lg bg-indigo-500/20 flex items-center justify-center shrink-0">
+                      <Sparkles className="h-4 w-4 text-indigo-400 animate-pulse" />
+                    </div>
+                    <div className="text-sm leading-relaxed overflow-hidden">
+                      {renderMessageContent(streamingContent)}
+                      <span className="inline-block w-2 h-4 bg-indigo-400 ml-0.5 animate-pulse rounded-sm"></span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Waiting indicator (before first token arrives) */}
+              {isTyping && !streamingContent && (
+                <div className="flex justify-start">
                   <div className="max-w-[80%] p-4 rounded-2xl flex gap-4 glass-panel border-slate-800">
                     <div className="mt-1 h-8 w-8 rounded-lg bg-indigo-500/20 flex items-center justify-center shrink-0">
                       <Loader2 className="h-4 w-4 text-indigo-400 animate-spin" />
                     </div>
-                    <div>
-                      <p className="text-sm text-slate-400">Assistant is thinking...</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-1">
+                        <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                        <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                        <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      </div>
+                      <p className="text-sm text-slate-400">Generating response...</p>
                     </div>
                   </div>
                 </div>
@@ -247,7 +418,6 @@ export default function ChatSearch() {
                   key={suggestion}
                   onClick={() => {
                     setQuery(suggestion);
-                    // Optionally auto-trigger send
                   }}
                   className="px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-400 hover:border-indigo-500/50 hover:text-indigo-400 transition-all flex items-center gap-2"
                  >
@@ -259,18 +429,31 @@ export default function ChatSearch() {
             
             <form onSubmit={handleSend} className="relative">
               <Input 
-                placeholder={view === 'chat' ? "Ask anything..." : "Search courses semantically..."}
-                className="pr-12 h-14 rounded-2xl bg-slate-900 border-slate-800 focus:border-indigo-500 disabled:opacity-50 shadow-2xl"
+                placeholder={view === 'chat' ? "Ask anything about AI & ML..." : "Search courses semantically..."}
+                className="pr-24 h-14 rounded-2xl bg-slate-900 border-slate-800 focus:border-indigo-500 disabled:opacity-50 shadow-2xl"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 disabled={isTyping || isSearching}
               />
-              <button 
-                type="submit"
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-indigo-500 rounded-xl hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/30"
-              >
-                {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : (view === 'chat' ? <Send className="h-5 w-5" /> : <Search className="h-5 w-5" />)}
-              </button>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                {isTyping && (
+                  <button
+                    type="button"
+                    onClick={handleStopStreaming}
+                    className="p-2 bg-red-500/20 rounded-xl hover:bg-red-500/40 transition-colors border border-red-500/30"
+                    title="Stop generating"
+                  >
+                    <StopCircle className="h-4 w-4 text-red-400" />
+                  </button>
+                )}
+                <button 
+                  type="submit"
+                  disabled={isTyping || isSearching}
+                  className="p-2 bg-indigo-500 rounded-xl hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : (view === 'chat' ? <Send className="h-5 w-5" /> : <Search className="h-5 w-5" />)}
+                </button>
+              </div>
             </form>
           </div>
         </div>
