@@ -1,0 +1,37 @@
+# Python Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Node.js
+node_modules/
+dist/
+build/
+.npm
+*.log
+
+# IDEs and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Project specific
+backend/course_pdfs/
+backend/db_backups/
+backend/core/__pycache__/
+backend/.venv/  
+backend/core/__pycache__
+
