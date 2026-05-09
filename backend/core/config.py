@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     DATABASE_NAME: str = "ai_learning_hub"
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
+    HF_API_TOKEN: str = ""
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     model_config = SettingsConfigDict(env_file=".env")
