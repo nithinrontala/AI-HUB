@@ -1,81 +1,71 @@
-# AI Learning Hub
+# AI Learning Hub 🤖📚
 
-A modern, AI-powered learning platform featuring content-based course recommendations, intelligent learning paths, and a sleek user interface.
+A premium, AI-powered learning platform featuring semantic search, RAG-based chat assistants, hybrid recommendations, and a gamified student dashboard.
+
+![AI Hub Preview](https://via.placeholder.com/1200x600/1a1a1a/ffffff?text=AI+Learning+Hub+Interface)
+
+## 🌟 Key Features
+
+- **🧠 RAG-Based Chat Assistant**: An intelligent tutor powered by `Zephyr-7b` that answers questions based on actual course PDFs.
+- **🎯 Hybrid Recommendations**: Personalized course suggestions using a fusion of Collaborative Filtering and Content-Based models.
+- **🔍 Semantic Search**: Find courses based on conceptual meaning rather than just keyword matches.
+- **📊 Gamified Dashboard**: Track your XP, earn badges, and climb the leaderboard as you complete AI modules.
+- **🗺️ Learning Paths**: Interactive roadmaps for Specializations (e.g., ML Engineer, NLP Specialist).
+- **🏷️ Auto-Tagging**: Zero-shot classification automatically categorizes new courses into domains.
+
+---
+
 
 ## 🚀 Getting Started
 
-### Prerequisites
+### 1. Prerequisites
 - **Python 3.9+**
 - **Node.js 18+**
-- **MongoDB** (Local instance or Atlas)
+- **MongoDB** (Local or Atlas)
+- **Hugging Face API Token** (For Chat & Auto-tagging)
+
+### 2. Backend Setup
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+**Configure Environment:**
+Create a `.env` file in `backend/`:
+```env
+MONGODB_URL="mongodb://localhost:27017/"
+DATABASE_NAME="ai_learning_hub"
+HF_API_TOKEN="your_huggingface_token_here"
+```
+
+**Initialize Data:**
+```powershell
+python scripts/generate_synthetic_data.py
+python scripts/populate_embeddings.py
+python scripts/index_pdfs.py
+```
+
+**Run Server:**
+```powershell
+uvicorn main:app --reload
+```
+
+### 3. Frontend Setup
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+Visit `http://localhost:5173` to start learning!
 
 ---
 
-## 🛠️ Backend Setup (FastAPI)
-
-1. **Navigate to the backend directory:**
-   ```powershell
-   cd backend
-   ```
-
-2. **Create and activate a virtual environment:**
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\activate
-   ```
-
-3. **Install dependencies:**
-   ```powershell
-   pip install -r requirements.txt
-   ```
-
-4. **Configure Environment Variables:**
-   Create a `.env` file in the `backend` directory (see `.env.example` if available, or use the following):
-   ```env
-   MONGODB_URL="mongodb://localhost:27017/"
-   DATABASE_NAME="ai_learning_hub"
-   ```
-
-5. **Initialize Data & Embeddings:**
-   If starting fresh, generate synthetic data and then populate course embeddings:
-   ```powershell
-   python scripts/generate_synthetic_data.py
-   python scripts/populate_embeddings.py
-   ```
-
-6. **Run the server:**
-   ```powershell
-   uvicorn main:app --reload
-   ```
-   The API will be available at `http://localhost:8000`.
-
----
-
-## 💻 Frontend Setup (React + Vite)
-
-1. **Navigate to the frontend directory:**
-   ```powershell
-   cd frontend
-   ```cd
-
-2. **Install dependencies:**
-   ```powershell
-   npm install
-   ```
-
-3. **Run the development server:**
-   ```powershell
-   npm run dev
-   ```
-   The application will be available at `http://localhost:5173`.
-
----
-
-## 🤖 Features implemented
-- **User Authentication**: Secure login and signup flow.
-- **AI Recommendations**: Content-based filtering using HuggingFace `sentence-transformers`.
-- **Dynamic Learning Path**: Visualize your progress through AI specializations.
-- **Modern UI**: Dark-themed, responsive design built with Tailwind CSS and Lucide icons.
+## 🛠️ Technology Stack
+- **Backend**: FastAPI, MongoDB, HuggingFace Inference API.
+- **Frontend**: React, Vite, Tailwind CSS, Framer Motion, Recharts.
+- **ML Services**: Sentence-Transformers, PyPDF2, BART Zero-Shot.
 
 ## 📄 License
-This project is for educational purposes as part of the AI Specialization.
+This project is part of the AI Specialization Final Delivery.
